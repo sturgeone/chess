@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>超级中国象棋 v1.2.1</title>
+    <title>超级中国象棋</title>
 	<link rel="icon" type="image/png" href="./icon.png">
     <link rel="apple-touch-icon" href="./icon.png">
     <script src="tailwind.js"></script>
@@ -56,13 +56,16 @@
         .animate-gold {
             animation: gold-pulse 2s infinite;
         }
-        /* Selection pulse for revival/swap targets */
+        /* Selection pulse for revival/swap/illusion targets */
         @keyframes target-pulse {
             0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
             50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.2); }
         }
         .revive-target {
             animation: target-pulse 1.5s ease-in-out infinite;
+        }
+        .skill-target-indicator {
+            animation: target-pulse 1.0s ease-in-out infinite;
         }
         /* Move indicator animation */
         @keyframes ping-with-center {
@@ -71,6 +74,38 @@
         }
         .animate-ping-slow {
             animation: ping-with-center 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        /* Flipped status effect - Optimized for Visibility */
+        .piece-flipped {
+            position: relative;
+        }
+        .piece-flipped::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-color: rgba(100, 100, 100, 0.15); /* Subtle dimming */
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 15;
+        }
+        .piece-flipped::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 2px dashed rgba(80, 80, 80, 0.6); /* Dashed border to indicate status */
+            pointer-events: none;
+            z-index: 16;
+        }
+        .ban-icon-overlay {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: white;
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            z-index: 20;
+            color: #ef4444;
         }
     </style>
 </head>
@@ -95,19 +130,22 @@
         const BookOpen = (p) => <Icon {...p}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></Icon>;
         const Undo2 = (p) => <Icon {...p}><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></Icon>;
         const MousePointer2 = (p) => <Icon {...p}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></Icon>; 
-        const Sparkles = (p) => <Icon {...p}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 5H5"/><path d="M5 19v2"/><path d="M5 21h4"/></Icon>;
+        const Sparkles = (p) => <Icon {...p}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 5H5"/><path d="M5 19v2"/><path d="M5 21h4"/></Icon>;
         const Repeat = (p) => <Icon {...p}><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></Icon>;
         const Swords = (p) => <Icon {...p}><path d="M14.5 17.5L3 6V3h3l11.5 11.5"/><path d="m13 19 6-6"/><path d="M19 5l-7 7"/><path d="m21 2-9.6 9.6"/></Icon>;
+        const Eye = (p) => <Icon {...p}><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></Icon>;
+        const Ban = (p) => <Icon {...p}><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></Icon>;
+        const Ghost = (p) => <Icon {...p}><path d="M9 22a7 7 0 0 1-7-7V9a7 7 0 0 1 14 0v6a7 7 0 0 1-7 7z"/><path d="M9 22v-6"/><path d="M12 22v-6"/><path d="M15 22v-6"/><path d="M9 13h.01"/><path d="M15 13h.01"/></Icon>;
 
         // --- Game Constants ---
         const BOARD_ROWS = 10;
         const BOARD_COLS = 9;
         const COLORS = { RED: 'red', BLACK: 'black' };
         
-        const PIECE = { KING: 'k', ADVISOR: 'a', ELEPHANT: 'e', HORSE: 'h', ROOK: 'r', CANNON: 'c', PAWN: 'p', GUARD: 'g' };
+        const PIECE = { KING: 'k', ADVISOR: 'a', ELEPHANT: 'e', HORSE: 'h', ROOK: 'r', CANNON: 'c', PAWN: 'p', GUARD: 'g', SHADOW: 's' };
         
         const STANDARD_PIECES = [PIECE.KING, PIECE.ADVISOR, PIECE.ELEPHANT, PIECE.HORSE, PIECE.ROOK, PIECE.CANNON, PIECE.PAWN];
-        const DERIVED_PIECES = [PIECE.GUARD];
+        const DERIVED_PIECES = [PIECE.GUARD, PIECE.SHADOW];
 
         const ROLES = {
             CLASSIC: 'classic',
@@ -117,7 +155,8 @@
             EMPEROR: 'emperor',
             TYRANT: 'tyrant',
             NECROMANCER: 'necromancer',
-            FORTRESS: 'fortress'
+            FORTRESS: 'fortress',
+            TRICKSTER: 'trickster' // Renamed from Illusionist
         };
 
         const ROLE_DESC = {
@@ -128,7 +167,8 @@
             [ROLES.EMPEROR]: '帝王 - 帅士全图移动',
             [ROLES.TYRANT]: '暴君 - 吞噬进化/额外回合',
             [ROLES.NECROMANCER]: '巫师 - 招魂：复活原位死亡子',
-            [ROLES.FORTRESS]: '堡垒 - 开局自带两盾/斜向禁行'
+            [ROLES.FORTRESS]: '堡垒 - 开局自带两盾/斜向禁行',
+            [ROLES.TRICKSTER]: '诡术 - 开局生幻/贴脸翻面' 
         };
 
         const ROLE_DETAILS = {
@@ -139,7 +179,8 @@
             [ROLES.EMPEROR]: '【帝王】\n真龙天子，威震四方。\n1. 帅/将：不再局限于九宫格，可以全图移动（每次一格）。\n2. 士/仕：作为帝王的贴身侍卫，也不再局限于九宫格，可以全图斜向移动。\n3. 注意：本游戏中所有"将/帅"均可发动飞将，但帝王不怕飞将。',
             [ROLES.TYRANT]: '【暴君】\n残暴统治，吞噬进化。\n1. 【吞噬进化】：当你吃掉任意棋子（包括己方）时，该棋子会获得被吃棋子的能力（变为衍生棋子）。\n   例如：车吃炮 -> 变为"车炮"（同时拥有车和炮的走法）。\n   若"车炮"再吃马 -> 变为"车马"（主属性不变，副属性替换）。\n2. 【暴政】：吃掉己方棋子时，获得额外回合（连走）。',
             [ROLES.NECROMANCER]: '【巫师】\n掌管生死的黑魔法。\n技能【招魂】（主动技）：\n1. 每局限用一次。\n2. 轮到你行动时，点击骷髅按钮发动。\n3. 点击一个"原本属于你且目前为空"的初始位置复活该棋子。',
-            [ROLES.FORTRESS]: '【移动堡垒】\n拥有极强的阵地防御能力。\n1. 开局额外获得两枚【盾】。\n2. 【盾】斜向移动，无法吃子，但有"重力锁"：紧挨着（斜向）盾的敌方棋子无法移动。'
+            [ROLES.FORTRESS]: '【移动堡垒】\n拥有极强的阵地防御能力。\n1. 开局额外获得两枚【盾】。【盾】初始位于己方四路和六路，与兵/卒同行。\n2. 【盾】斜向移动，无法吃子，但有"重力锁"：与【盾】斜向相邻的敌方棋子无法移动。',
+            [ROLES.TRICKSTER]: '【诡术师】\n在敌后制造幻象，干扰战局。\n1. 【幻象生成】：游戏开始时，在敌方四路和六路，炮所在行生成两枚【幻】。\n2. 【幻】：\n   -虚无：无法被吃，也无法吃子。\n   -潜行：只能向前后左右移动一格。\n   -惊吓：当【幻】的【前方】或【左右】紧邻敌方棋子时，你可以点击该敌方棋子，将其【翻面】并跳过本回合（视为一次行动）。'
         };
 
         const STANDARD_START_BOARD = [
@@ -153,6 +194,8 @@
 
         const getInitialBoard = (redRole, blackRole) => {
             let board = JSON.parse(JSON.stringify(STANDARD_START_BOARD));
+            
+            // Fortress Spawns
             if (redRole === ROLES.FORTRESS) {
                 board.push({ id: 'r_g1', type: PIECE.GUARD, color: COLORS.RED, x: 3, y: 6 });
                 board.push({ id: 'r_g2', type: PIECE.GUARD, color: COLORS.RED, x: 5, y: 6 });
@@ -161,12 +204,27 @@
                 board.push({ id: 'b_g1', type: PIECE.GUARD, color: COLORS.BLACK, x: 3, y: 3 });
                 board.push({ id: 'b_g2', type: PIECE.GUARD, color: COLORS.BLACK, x: 5, y: 3 });
             }
+
+            // Trickster (Shadow) Spawns
+            // Enemy's 4th and 6th file (x=3 and x=5), same rank as cannon (y=2 for Black, y=7 for Red)
+            if (redRole === ROLES.TRICKSTER) {
+                // Red Trickster spawns Shadows on Black's side (y=2)
+                // Note: Standard setup has Black Cannons at x=1, y=2 and x=7, y=2. x=3,5 are empty.
+                board.push({ id: 'r_s1', type: PIECE.SHADOW, color: COLORS.RED, x: 3, y: 2 });
+                board.push({ id: 'r_s2', type: PIECE.SHADOW, color: COLORS.RED, x: 5, y: 2 });
+            }
+            if (blackRole === ROLES.TRICKSTER) {
+                // Black Trickster spawns Shadows on Red's side (y=7)
+                board.push({ id: 'b_s1', type: PIECE.SHADOW, color: COLORS.BLACK, x: 3, y: 7 });
+                board.push({ id: 'b_s2', type: PIECE.SHADOW, color: COLORS.BLACK, x: 5, y: 7 });
+            }
+
             return board;
         };
 
         const LABELS = {
-            [COLORS.RED]: { [PIECE.KING]: '帥', [PIECE.ADVISOR]: '仕', [PIECE.ELEPHANT]: '相', [PIECE.HORSE]: '馬', [PIECE.ROOK]: '車', [PIECE.CANNON]: '炮', [PIECE.PAWN]: '兵', [PIECE.GUARD]: '盾' },
-            [COLORS.BLACK]: { [PIECE.KING]: '將', [PIECE.ADVISOR]: '士', [PIECE.ELEPHANT]: '象', [PIECE.HORSE]: '馬', [PIECE.ROOK]: '車', [PIECE.CANNON]: '砲', [PIECE.PAWN]: '卒', [PIECE.GUARD]: '盾' }
+            [COLORS.RED]: { [PIECE.KING]: '帥', [PIECE.ADVISOR]: '仕', [PIECE.ELEPHANT]: '相', [PIECE.HORSE]: '馬', [PIECE.ROOK]: '車', [PIECE.CANNON]: '炮', [PIECE.PAWN]: '兵', [PIECE.GUARD]: '盾', [PIECE.SHADOW]: '幻' },
+            [COLORS.BLACK]: { [PIECE.KING]: '將', [PIECE.ADVISOR]: '士', [PIECE.ELEPHANT]: '象', [PIECE.HORSE]: '馬', [PIECE.ROOK]: '車', [PIECE.CANNON]: '砲', [PIECE.PAWN]: '卒', [PIECE.GUARD]: '盾', [PIECE.SHADOW]: '幻' }
         };
 
         const getPieceLabel = (piece) => {
@@ -191,11 +249,34 @@
              const moves = [];
              const { color, x, y } = piece;
              const myRole = color === COLORS.RED ? redRole : blackRole;
+             
+             // --- FLIPPED / SILENCED LOGIC ---
+             if (piece.isFlipped) {
+                 [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
+                    const tx = x + dx;
+                    const ty = y + dy;
+                    if (isWithinBoard(tx, ty)) {
+                        const target = getPieceAt(board, tx, ty);
+                        // Cannot eat, only move to empty
+                        if (!target) {
+                            moves.push({ x: tx, y: ty });
+                        }
+                    }
+                 });
+                 return moves;
+             }
+             // ---------------------------------
+
              const isBlocked = (bx, by) => getPieceAt(board, bx, by) !== undefined;
              
              const tryMove = (tx, ty) => {
                 if (!isWithinBoard(tx, ty)) return;
                 const target = getPieceAt(board, tx, ty);
+                
+                // --- SHADOW IMMUNITY ---
+                if (target && target.type === PIECE.SHADOW) return; // Cannot eat Shadow
+                // -----------------------
+
                 if (target) {
                     const targetRole = target.color === COLORS.RED ? redRole : blackRole;
                     if ((target.type === PIECE.HORSE || target.type === PIECE.ELEPHANT) &&
@@ -210,7 +291,7 @@
                     [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
                         if (myRole === ROLES.EMPEROR || isPalace(x + dx, y + dy, color)) tryMove(x + dx, y + dy);
                     });
-                    // Flying general (only for main type KING)
+                    // Flying general
                     if (piece.type === PIECE.KING) {
                         for (let r = 0; r < BOARD_ROWS; r++) {
                             if (r === y) continue;
@@ -233,7 +314,6 @@
                 case PIECE.ELEPHANT:
                     [[2, 2], [2, -2], [-2, 2], [-2, -2]].forEach(([dx, dy]) => {
                         const tx = x + dx, ty = y + dy;
-                        // Beastmaster elephant can cross river
                         if (myRole === ROLES.BEASTMASTER || (color === COLORS.RED && ty >= 5) || (color === COLORS.BLACK && ty <= 4)) {
                             if (myRole === ROLES.BEASTMASTER || !isBlocked(x + dx / 2, y + dy / 2)) tryMove(tx, ty);
                         }
@@ -252,6 +332,11 @@
                                 const target = getPieceAt(board, curX, curY);
                                 if (!target) { moves.push({ x: curX, y: curY }); } 
                                 else { 
+                                    // --- SHADOW CHECK ---
+                                    if (target.type === PIECE.SHADOW) { // Stop at Shadow, cannot eat
+                                         break; 
+                                    }
+                                    // --------------------
                                     const targetRole = target.color === COLORS.RED ? redRole : blackRole;
                                     const isImmune = (target.type === PIECE.HORSE || target.type === PIECE.ELEPHANT) && targetRole === ROLES.BEASTMASTER && roundCount <= 3;
                                     if ((target.color !== color || myRole === ROLES.TYRANT) && !isImmune) moves.push({ x: curX, y: curY }); 
@@ -273,6 +358,11 @@
                                     }
                                  } 
                                  else if (target) { 
+                                     // --- SHADOW CHECK ---
+                                     if (target.type === PIECE.SHADOW) { // Stop at Shadow, cannot eat
+                                         break; 
+                                     }
+                                     // --------------------
                                      const targetRole = target.color === COLORS.RED ? redRole : blackRole;
                                      const isImmune = (target.type === PIECE.HORSE || target.type === PIECE.ELEPHANT) && targetRole === ROLES.BEASTMASTER && roundCount <= 3;
                                      if ((target.color !== color || myRole === ROLES.TYRANT) && !isImmune) moves.push({ x: tempX, y: tempY }); 
@@ -284,20 +374,33 @@
                     });
                     break;
                 case PIECE.GUARD:
-                    [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([dx, dy]) => {
-                        let curX = x + dx;
-                        let curY = y + dy;
-                        while (isWithinBoard(curX, curY)) {
-                            const target = getPieceAt(board, curX, curY);
-                            if (!target) { 
-                                moves.push({ x: curX, y: curY }); 
-                            } else {
-                                break;
-                            }
-                            curX += dx;
-                            curY += dy;
-                        }
+                case PIECE.SHADOW: // Shared simple movement for derived pieces
+                    [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
+                         // GUARD moves diag, SHADOW moves straight
+                         if (type === PIECE.GUARD) {
+                            if (Math.abs(dx) + Math.abs(dy) !== 1) return; // Guard moves diag, wait.
+                            // Logic below is straight. Guard uses specific diag logic.
+                         }
                     });
+
+                    if (type === PIECE.GUARD) {
+                        [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([dx, dy]) => {
+                            let curX = x + dx; let curY = y + dy;
+                            while (isWithinBoard(curX, curY)) {
+                                const target = getPieceAt(board, curX, curY);
+                                if (!target) { moves.push({ x: curX, y: curY }); } else { break; }
+                                curX += dx; curY += dy;
+                            }
+                        });
+                    } else if (type === PIECE.SHADOW) {
+                        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+                             const tx = x + dx; const ty = y + dy;
+                             if (isWithinBoard(tx, ty)) {
+                                 const target = getPieceAt(board, tx, ty);
+                                 if (!target) moves.push({ x: tx, y: ty }); // Can only move to empty
+                             }
+                        });
+                    }
                     break;
                 case PIECE.PAWN:
                     const forward = color === COLORS.RED ? -1 : 1;
@@ -327,7 +430,7 @@
             // 2. Get Moves based on Type (and Subtype if hybrid)
             let moves = getMovesForType(piece.type, piece, board, redRole, blackRole, roundCount);
             
-            if (piece.subtype) {
+            if (piece.subtype && !piece.isFlipped) { // Flipped pieces lose subtype abilities
                 const subMoves = getMovesForType(piece.subtype, piece, board, redRole, blackRole, roundCount);
                 // Merge unique moves
                 subMoves.forEach(sm => {
@@ -362,7 +465,10 @@
 				playTone(600, 'sine', 0.5);
 				setTimeout(() => playTone(800, 'sine', 0.5), 100);
 				setTimeout(() => playTone(1200, 'sine', 0.6), 200);
-			} else if (type === 'WIN') {
+			} else if (type === 'SKILL_BAD') {
+                playTone(200, 'sawtooth', 0.4, 0.5);
+                setTimeout(() => playTone(150, 'sawtooth', 0.4, 0.5), 150);
+            } else if (type === 'WIN') {
 				const now = audioCtx.currentTime;
 				[0, 150, 300, 600].forEach((delay, i) => setTimeout(() => playTone(400 + i * 100, 'triangle', 0.4, 0.3), delay));
 				setTimeout(() => playTone(800, 'square', 1.0, 0.2), 900);
@@ -402,6 +508,8 @@
             const [swapUsedInTurn, setSwapUsedInTurn] = useState(false);
             const [isSwapping, setIsSwapping] = useState(false);
             const [swapSource, setSwapSource] = useState(null);
+            
+            // Removed Illusionist State
 
             // UI
             const [initialTurn, setInitialTurn] = useState(COLORS.RED);
@@ -457,25 +565,24 @@
             const changeRole = (color, newRole) => {
                 const setter = color === COLORS.RED ? setRedRole : setBlackRole;
                 setter(newRole);
-                if (newRole === ROLES.FORTRESS) spawnShieldsIfEmpty(color);
+                if (newRole === ROLES.FORTRESS || newRole === ROLES.TRICKSTER) {
+                    // Reset board if role changes because these roles spawn items
+                    // For simplicity, we just remind user or reset board manually
+                    // But here we can trigger a soft reset if game hasn't really started (round 1)
+                    if (roundCount === 1) {
+                         const otherRole = color === COLORS.RED ? blackRole : redRole;
+                         // Hacky: we need state of other role. 
+                         // Better: Just set the role. The user can click 'Restart' to apply spawn changes.
+                         setMessage("角色变更：请点击【重开】应用新角色的开局棋子");
+                    }
+                }
             };
 
-            const spawnShieldsIfEmpty = (color) => {
-                setBoard(prev => {
-                    const newBoard = [...prev];
-                    const y = color === COLORS.RED ? 6 : 3;
-                    const xs = [3, 5];
-                    let added = false;
-                    xs.forEach((x, i) => {
-                        const existing = newBoard.find(p => p.x === x && p.y === y);
-                        if (!existing) {
-                            newBoard.push({ id: `${color === COLORS.RED ? 'r' : 'b'}_g${i+1}_auto`, type: PIECE.GUARD, color, x, y });
-                            added = true;
-                        }
-                    });
-                    if (added) { setMessage("堡垒激活：自动生成护盾"); playSound('MAGIC'); }
-                    return newBoard;
-                });
+            const nextTurn = () => {
+                const next = turn === COLORS.RED ? COLORS.BLACK : COLORS.RED;
+                setTurn(next);
+                setSwapUsedInTurn(false);
+                if (turn === COLORS.BLACK) setRoundCount(prev => prev + 1);
             };
 
             const handleTileClick = (e, x, y) => {
@@ -483,34 +590,33 @@
 
                 // --- Edit Mode ---
                 if (isEditing) {
+                    const p = getPieceAt(board, x, y);
+
+                    // Flip Tool Logic
+                    if (editTool === 'flip') {
+                        if (p) {
+                            const newBoard = board.map(item => item.id === p.id ? { ...item, isFlipped: !item.isFlipped } : item);
+                            setBoard(newBoard);
+                            playSound('MAGIC');
+                            setMessage(`棋子状态: ${!p.isFlipped ? '已翻面' : '恢复'}`);
+                        }
+                        return;
+                    }
+
                     // Devour Tool Logic
                     if (editTool === 'devour') {
-                        const p = getPieceAt(board, x, y);
-                        if (!p) {
-                            // Clicked empty space - cancel selection
-                            setEditMoveSource(null);
-                            return;
-                        }
-                        
-                        // If no source selected yet, select this as Eater
+                        if (!p) { setEditMoveSource(null); return; }
                         if (!editMoveSource) {
                             setEditMoveSource(p);
                             setMessage(`已选择吞噬者: ${getPieceLabel(p)}，请选择被吞噬的棋子`);
                             playSound('MOVE');
                             return;
                         }
+                        if (p.id === editMoveSource.id) { setEditMoveSource(null); return; }
 
-                        // If source selected, and clicked same piece - deselect
-                        if (p.id === editMoveSource.id) {
-                            setEditMoveSource(null);
-                            return;
-                        }
-
-                        // Execute Devour (Synthesis)
                         const newBoard = board.filter(item => item.id !== editMoveSource.id && item.id !== p.id);
                         const newPiece = { ...editMoveSource, subtype: p.type };
                         newBoard.push(newPiece);
-                        
                         setBoard(newBoard);
                         setEditMoveSource(null);
                         setMessage(`合成成功: ${getPieceLabel(newPiece)}`);
@@ -580,10 +686,8 @@
                             setMessage("必须选择 马 或 象/相");
                         }
                     } else {
-                        // Have source, clicking target
                         const neededType = swapSource.type === PIECE.HORSE ? PIECE.ELEPHANT : PIECE.HORSE;
                         if (p.type === neededType) {
-                            // Perform swap
                             saveHistory();
                             const newBoard = board.map(piece => {
                                 if (piece.id === swapSource.id) return { ...piece, x: p.x, y: p.y };
@@ -598,10 +702,43 @@
                             playSound('MAGIC');
                         } else {
                             setMessage("目标必须是另一类棋子(马/象)");
-                            setSwapSource(null); // Reset selection
+                            setSwapSource(null);
                         }
                     }
                     return;
+                }
+
+                // --- TRICKSTER SHADOW INTERACTION ---
+                // If I have selected a SHADOW, and I click an ENEMY adjacent to it (Front/Left/Right)
+                if (selectedPos) {
+                    const mover = getPieceAt(board, selectedPos.x, selectedPos.y);
+                    const target = getPieceAt(board, x, y);
+                    
+                    if (mover && mover.type === PIECE.SHADOW && mover.color === turn && target && target.color !== turn) {
+                        // Check adjacency (Forward, Left, Right)
+                        const dx = x - mover.x;
+                        const dy = y - mover.y;
+                        const forwardDir = turn === COLORS.RED ? -1 : 1;
+                        
+                        // Conditions:
+                        // 1. Distance is 1
+                        // 2. Not backward (backward dy would be -forwardDir)
+                        const isAdjacent = Math.abs(dx) + Math.abs(dy) === 1;
+                        const isBackward = (dx === 0 && dy === -forwardDir);
+                        
+                        if (isAdjacent && !isBackward) {
+                            // Perform FLIP
+                            saveHistory();
+                            const newBoard = board.map(item => item.id === target.id ? { ...item, isFlipped: true } : item);
+                            setBoard(newBoard);
+                            setMessage(`诡术生效: ${getPieceLabel(target)} 已翻面`);
+                            playSound('MAGIC');
+                            setSelectedPos(null);
+                            setValidMoves([]);
+                            nextTurn(); // Consumes turn
+                            return;
+                        }
+                    }
                 }
 
                 // --- Normal Play ---
@@ -629,10 +766,15 @@
                 let newMover = { ...mover, x: to.x, y: to.y };
                 let msg = null;
 
+                // --- RECOVERY FROM FLIP ---
+                if (newMover.isFlipped) {
+                    newMover.isFlipped = false;
+                    msg = `${getPieceLabel(newMover)} 恢复正常`;
+                }
+
                 // --- Tyrant Evolution Logic ---
                 const myRole = mover.color === COLORS.RED ? redRole : blackRole;
                 if (target && myRole === ROLES.TYRANT) {
-                    // Evolve
                     newMover.subtype = target.type;
                     msg = `暴君吞噬: ${getPieceLabel(newMover)}`;
                 }
@@ -674,10 +816,7 @@
                 if (msg) setMessage(msg);
 
                 if (!extraTurn) {
-                    const nextTurn = turn === COLORS.RED ? COLORS.BLACK : COLORS.RED;
-                    setTurn(nextTurn);
-                    setSwapUsedInTurn(false); // Reset skill usage
-                    if (turn === COLORS.BLACK) setRoundCount(prev => prev + 1);
+                    nextTurn();
                 }
             };
 
@@ -736,14 +875,9 @@
 
             // Skill Button Check
             const canRevive = getCanRevive(turn);
-            const showNecro = !winner && !isEditing && (
-                (turn === COLORS.RED && redRole === ROLES.NECROMANCER && !necroUsed[COLORS.RED]) ||
-                (turn === COLORS.BLACK && blackRole === ROLES.NECROMANCER && !necroUsed[COLORS.BLACK])
-            );
-            const showSwap = !winner && !isEditing && !swapUsedInTurn && (
-                (turn === COLORS.RED && redRole === ROLES.BEASTMASTER) ||
-                (turn === COLORS.BLACK && blackRole === ROLES.BEASTMASTER)
-            );
+            const activeRole = turn === COLORS.RED ? redRole : blackRole;
+            const showNecro = !winner && !isEditing && activeRole === ROLES.NECROMANCER && !necroUsed[turn];
+            const showSwap = !winner && !isEditing && !swapUsedInTurn && activeRole === ROLES.BEASTMASTER;
 
             return (
                 <div className="relative w-full max-w-[420px] h-full flex flex-col items-center bg-stone-200 shadow-2xl overflow-hidden">
@@ -751,7 +885,7 @@
                     <div className="w-full bg-stone-800 text-stone-200 p-3 flex justify-between items-center z-20 shadow-md">
                         <div className="font-bold text-lg tracking-wider flex items-center gap-2">
                            <span><span className="text-red-600">超级</span>中国象棋</span>
-                           <span className="text-xs font-normal bg-stone-700 px-2 py-0.5 rounded text-stone-400">v1.2.1</span>
+                           <span className="text-xs font-normal bg-stone-700 px-2 py-0.5 rounded text-stone-400">v1.3.0</span>
                         </div>
                         <div className="flex gap-3">
                              <button onClick={(e) => { e.stopPropagation(); setShowHelp(true); }} className="p-2 bg-stone-700 rounded hover:bg-stone-600"><BookOpen size={18} /></button>
@@ -820,6 +954,20 @@
                                 const isEditSource = editMoveSource?.x === x && editMoveSource?.y === y;
                                 const label = getPieceLabel(piece);
                                 
+                                // Shadow Skill Target Indicator
+                                let isShadowTarget = false;
+                                if (selectedPos) {
+                                    const mover = getPieceAt(board, selectedPos.x, selectedPos.y);
+                                    if (mover && mover.type === PIECE.SHADOW && mover.color === turn && piece && piece.color !== turn) {
+                                         const dx = x - mover.x;
+                                         const dy = y - mover.y;
+                                         const forwardDir = turn === COLORS.RED ? -1 : 1;
+                                         if ((Math.abs(dx) + Math.abs(dy) === 1) && !(dx === 0 && dy === -forwardDir)) {
+                                             isShadowTarget = true;
+                                         }
+                                    }
+                                }
+
                                 return (
                                     <React.Fragment key={`${x}-${y}`}>
                                         {isValid && !piece && <div style={getTileStyle(x, y)} className="w-4 h-4 rounded-full bg-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.6)] cursor-pointer z-10 hover:scale-125 transition-transform" onClick={(e) => handleTileClick(e, x, y)} />}
@@ -831,15 +979,19 @@
                                             <div style={getTileStyle(x, y)} className="w-11 h-11 rounded-full border-2 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.6)] z-0 animate-ping-slow" />
                                         )}
 
+                                        {isShadowTarget && (
+                                             <div style={getTileStyle(x, y)} className="w-11 h-11 rounded-full border-2 border-cyan-400 skill-target-indicator z-30 pointer-events-none" />
+                                        )}
+
                                         {piece && (
-                                            <div onClick={(e) => handleTileClick(e, x, y)} style={getTileStyle(x, y)} className={`w-9 h-9 rounded-full piece-shadow z-10 cursor-pointer flex items-center justify-center bg-[#f3dcb8] border-2 ${piece.color === COLORS.RED ? 'border-red-800 text-red-700' : 'border-stone-800 text-stone-900'} transition-transform active:scale-95`}>
+                                            <div onClick={(e) => handleTileClick(e, x, y)} style={getTileStyle(x, y)} className={`w-9 h-9 rounded-full piece-shadow z-10 cursor-pointer flex items-center justify-center bg-[#f3dcb8] border-2 ${piece.color === COLORS.RED ? 'border-red-800 text-red-700' : 'border-stone-800 text-stone-900'} transition-transform active:scale-95 ${piece.isFlipped ? 'piece-flipped' : ''} ${piece.type === PIECE.SHADOW ? 'opacity-90' : ''}`}>
                                                 <div className={`w-7 h-7 rounded-full border flex items-center justify-center ${piece.color === COLORS.RED ? 'border-red-700/30' : 'border-stone-800/30'}`}>
                                                     <span className={`font-serif font-bold leading-none ${label.length > 1 ? 'text-xs scale-90' : 'text-lg'}`} style={{ marginTop: '-2px' }}>{label}</span>
+                                                    {piece.isFlipped && <div className="ban-icon-overlay"><Ban size={12} strokeWidth={3} /></div>}
                                                 </div>
                                             </div>
                                         )}
                                         
-                                        {/* Fix for Edit Mode Empty Click: Render a subtle hitbox when editing empty squares */}
                                         {!piece && !isValid && !isReviving && (
                                             <div 
                                                 onClick={(e) => handleTileClick(e, x, y)} 
@@ -895,6 +1047,7 @@
 											<button onClick={() => { setEditTool(null); setEditMoveSource(null); }} className={`p-2 rounded border ${editTool === null ? 'bg-amber-100 border-amber-500' : 'border-transparent'}`}><MousePointer2 size={20} className="text-stone-600"/></button>
 											<button onClick={() => { setEditTool('trash'); setEditMoveSource(null); }} className={`p-2 rounded border ${editTool === 'trash' ? 'bg-red-100 border-red-500' : 'border-transparent'}`}><Trash2 size={20} className="text-red-600"/></button>
 											<button onClick={() => { setEditTool('devour'); setEditMoveSource(null); }} className={`p-2 rounded border ${editTool === 'devour' ? 'bg-purple-100 border-purple-500' : 'border-transparent'}`}><Swords size={20} className="text-purple-600"/></button>
+                                            <button onClick={() => { setEditTool('flip'); setEditMoveSource(null); }} className={`p-2 rounded border ${editTool === 'flip' ? 'bg-cyan-100 border-cyan-500' : 'border-transparent'}`}><Ban size={20} className="text-cyan-600"/></button>
 										</div>
                                         
                                         {/* Divider */}
