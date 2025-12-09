@@ -156,19 +156,19 @@
             TYRANT: 'tyrant',
             NECROMANCER: 'necromancer',
             FORTRESS: 'fortress',
-            TRICKSTER: 'trickster' // Renamed from Illusionist
+            TRICKSTER: 'trickster'
         };
 
         const ROLE_DESC = {
             [ROLES.CLASSIC]: '传统 - 标准规则',
-            [ROLES.BEASTMASTER]: '御兽 - 强力马象/马象易位',
+            [ROLES.BEASTMASTER]: '御兽 - 马象易位',
             [ROLES.COMMANDO]: '特种 - 兵卒四向移动',
             [ROLES.ARTILLERY]: '炮兵 - 车可隔山打牛',
             [ROLES.EMPEROR]: '帝王 - 帅士全图移动',
-            [ROLES.TYRANT]: '暴君 - 吞噬进化/额外回合',
-            [ROLES.NECROMANCER]: '巫师 - 招魂：复活原位死亡子',
-            [ROLES.FORTRESS]: '堡垒 - 开局自带两盾/斜向禁行',
-            [ROLES.TRICKSTER]: '诡术 - 开局生幻/贴脸翻面' 
+            [ROLES.TYRANT]: '暴君 - 吞噬进化',
+            [ROLES.NECROMANCER]: '巫师 - 复活死亡子',
+            [ROLES.FORTRESS]: '堡垒 - 开局生盾',
+            [ROLES.TRICKSTER]: '诡术 - 开局生幻' 
         };
 
         const ROLE_DETAILS = {
@@ -180,7 +180,7 @@
             [ROLES.TYRANT]: '【暴君】\n残暴统治，吞噬进化。\n1. 【吞噬进化】：当你吃掉任意棋子（包括己方）时，该棋子会获得被吃棋子的能力（变为衍生棋子）。\n   例如：车吃炮 -> 变为"车炮"（同时拥有车和炮的走法）。\n   若"车炮"再吃马 -> 变为"车马"（主属性不变，副属性替换）。\n2. 【暴政】：吃掉己方棋子时，获得额外回合（连走）。',
             [ROLES.NECROMANCER]: '【巫师】\n掌管生死的黑魔法。\n技能【招魂】（主动技）：\n1. 每局限用一次。\n2. 轮到你行动时，点击骷髅按钮发动。\n3. 点击一个"原本属于你且目前为空"的初始位置复活该棋子。',
             [ROLES.FORTRESS]: '【移动堡垒】\n拥有极强的阵地防御能力。\n1. 开局额外获得两枚【盾】。【盾】初始位于己方四路和六路，与兵/卒同行。\n2. 【盾】斜向移动，无法吃子，但有"重力锁"：与【盾】斜向相邻的敌方棋子无法移动。',
-            [ROLES.TRICKSTER]: '【诡术师】\n在敌后制造幻象，干扰战局。\n1. 【幻象生成】：游戏开始时，在敌方四路和六路，炮所在行生成两枚【幻】。\n2. 【幻】：\n   -虚无：无法被吃，也无法吃子。\n   -潜行：只能向前后左右移动一格。\n   -惊吓：当【幻】的【前方】或【左右】紧邻敌方棋子时，你可以点击该敌方棋子，将其【翻面】并跳过本回合（视为一次行动）。\n 【翻面】：棋子无法吃子（仍可以被吃），只能向前后左右移动一格，移动后翻回正面。'
+            [ROLES.TRICKSTER]: '【诡术师】\n在敌后制造幻象，干扰战局。\n1. 【幻象生成】：游戏开始时，在敌方四路和六路，炮所在行生成两枚【幻】。\n2. 【幻】：\n   -虚无：无法被吃，无法吃子，不能重叠。\n   -穿梭：像车一样移动任意格，且无视任何阻挡（穿透），只能落在空位。\n   -幽灵：己方棋子移动/吃子时，无视己方【幻】的阻挡。\n   -惊吓：当【幻】的前后左右紧邻敌方棋子时，可将其【翻面】（若已翻面则不可再次惊吓）。'
         };
 
         const STANDARD_START_BOARD = [
@@ -243,6 +243,9 @@
             if (x < 3 || x > 5) return false;
             return color === COLORS.RED ? (y >= 7 && y <= 9) : (y >= 0 && y <= 2);
         };
+        
+        // Helper: Is this piece an ally shadow? (Ghostly to us)
+        const isAllyShadow = (p, color) => p && p.type === PIECE.SHADOW && p.color === color;
 
         // Core move logic separated by type for Hybrid support
         const getMovesForType = (type, piece, board, redRole, blackRole, roundCount) => {
@@ -267,14 +270,19 @@
              }
              // ---------------------------------
 
-             const isBlocked = (bx, by) => getPieceAt(board, bx, by) !== undefined;
+             // Custom blocked check that ignores Ally Shadows
+             const isBlocked = (bx, by) => {
+                 const blockPiece = getPieceAt(board, bx, by);
+                 if (blockPiece && isAllyShadow(blockPiece, color)) return false; // Ignore ally shadow blocking
+                 return blockPiece !== undefined;
+             };
              
              const tryMove = (tx, ty) => {
                 if (!isWithinBoard(tx, ty)) return;
                 const target = getPieceAt(board, tx, ty);
                 
                 // --- SHADOW IMMUNITY ---
-                if (target && target.type === PIECE.SHADOW) return; // Cannot eat Shadow
+                if (target && target.type === PIECE.SHADOW) return; // Cannot eat Shadow (Any shadow, ally or enemy)
                 // -----------------------
 
                 if (target) {
@@ -299,7 +307,17 @@
                             if (p && p.type === PIECE.KING && p.color !== color) {
                                 let blocked = false;
                                 const minY = Math.min(y, r), maxY = Math.max(y, r);
-                                for (let k = minY + 1; k < maxY; k++) if (getPieceAt(board, x, k)) { blocked = true; break; }
+                                // Check blocking. Ally shadows do not block view of flying general for the Ally? 
+                                // "己方棋子在计算...无视己方幻". Yes.
+                                for (let k = minY + 1; k < maxY; k++) {
+                                    const blocker = getPieceAt(board, x, k);
+                                    if (blocker) {
+                                        if (isAllyShadow(blocker, color)) continue; // Ignore my shadow
+                                        // What about enemy shadow? Usually blocks.
+                                        blocked = true; 
+                                        break; 
+                                    }
+                                }
                                 const targetRole = p.color === COLORS.RED ? redRole : blackRole;
                                 if (!blocked && targetRole !== ROLES.EMPEROR) moves.push({ x: x, y: r });
                             }
@@ -315,12 +333,14 @@
                     [[2, 2], [2, -2], [-2, 2], [-2, -2]].forEach(([dx, dy]) => {
                         const tx = x + dx, ty = y + dy;
                         if (myRole === ROLES.BEASTMASTER || (color === COLORS.RED && ty >= 5) || (color === COLORS.BLACK && ty <= 4)) {
+                            // isBlocked already handles ignoring Ally Shadows
                             if (myRole === ROLES.BEASTMASTER || !isBlocked(x + dx / 2, y + dy / 2)) tryMove(tx, ty);
                         }
                     });
                     break;
                 case PIECE.HORSE:
                     [{ dx: 1, dy: 2, bx: 0, by: 1 }, { dx: -1, dy: 2, bx: 0, by: 1 }, { dx: 1, dy: -2, bx: 0, by: -1 }, { dx: -1, dy: -2, bx: 0, by: -1 }, { dx: 2, dy: 1, bx: 1, by: 0 }, { dx: 2, dy: -1, bx: 1, by: 0 }, { dx: -2, dy: 1, bx: -1, by: 0 }, { dx: -2, dy: -1, bx: -1, by: 0 }]
+                    // isBlocked already handles ignoring Ally Shadows
                     .forEach(({ dx, dy, bx, by }) => { if (myRole === ROLES.BEASTMASTER || !isBlocked(x + bx, y + by)) tryMove(x + dx, y + dy); });
                     break;
                 case PIECE.ROOK:
@@ -330,17 +350,27 @@
                         if (type === PIECE.ROOK) {
                             while (isWithinBoard(curX, curY)) {
                                 const target = getPieceAt(board, curX, curY);
-                                if (!target) { moves.push({ x: curX, y: curY }); } 
+                                if (!target) { 
+                                    moves.push({ x: curX, y: curY }); 
+                                } 
                                 else { 
-                                    // --- SHADOW CHECK ---
-                                    if (target.type === PIECE.SHADOW) { // Stop at Shadow, cannot eat
-                                         break; 
+                                    // Obstacle found
+                                    // Check if Ally Shadow
+                                    if (isAllyShadow(target, color)) {
+                                        // Ignore it for movement path, but CANNOT land on it
+                                        // So we do NOT push move, but we DO continue loop
+                                    } else {
+                                        // Real obstacle
+                                        // --- SHADOW CHECK (Enemy) ---
+                                        if (target.type === PIECE.SHADOW) { // Enemy Shadow
+                                            break; // Stop at Enemy Shadow, cannot eat
+                                        }
+                                        // --------------------
+                                        const targetRole = target.color === COLORS.RED ? redRole : blackRole;
+                                        const isImmune = (target.type === PIECE.HORSE || target.type === PIECE.ELEPHANT) && targetRole === ROLES.BEASTMASTER && roundCount <= 3;
+                                        if ((target.color !== color || myRole === ROLES.TYRANT) && !isImmune) moves.push({ x: curX, y: curY }); 
+                                        break; 
                                     }
-                                    // --------------------
-                                    const targetRole = target.color === COLORS.RED ? redRole : blackRole;
-                                    const isImmune = (target.type === PIECE.HORSE || target.type === PIECE.ELEPHANT) && targetRole === ROLES.BEASTMASTER && roundCount <= 3;
-                                    if ((target.color !== color || myRole === ROLES.TYRANT) && !isImmune) moves.push({ x: curX, y: curY }); 
-                                    break; 
                                 }
                                 curX += dx; curY += dy;
                             }
@@ -350,23 +380,35 @@
                              while (isWithinBoard(tempX, tempY)) {
                                  const target = getPieceAt(board, tempX, tempY);
                                  if (!screenFound) { 
-                                    if (type === PIECE.CANNON) {
-                                        if (target) screenFound = true; 
-                                        else moves.push({ x: tempX, y: tempY }); 
+                                    // Looking for screen
+                                    if (target) {
+                                        if (isAllyShadow(target, color)) {
+                                            // Ally shadow is not a screen. Continue.
+                                            // If just moving (Cannon non-capture move), cannot land here.
+                                        } else {
+                                            screenFound = true; 
+                                        }
                                     } else {
-                                        if (target) screenFound = true;
+                                        // Empty space
+                                        if (type === PIECE.CANNON) moves.push({ x: tempX, y: tempY }); 
                                     }
                                  } 
                                  else if (target) { 
-                                     // --- SHADOW CHECK ---
-                                     if (target.type === PIECE.SHADOW) { // Stop at Shadow, cannot eat
+                                     // Screen found, looking for target
+                                     if (isAllyShadow(target, color)) {
+                                         // Ally shadow cannot be captured, and is transparent?
+                                         // Logic says "Ignore Ally Shadow when calculating movement and capturing".
+                                         // So we skip it.
+                                     } else {
+                                         // Real target
+                                         if (target.type === PIECE.SHADOW) { // Enemy Shadow
+                                             break; // Cannot eat
+                                         }
+                                         const targetRole = target.color === COLORS.RED ? redRole : blackRole;
+                                         const isImmune = (target.type === PIECE.HORSE || target.type === PIECE.ELEPHANT) && targetRole === ROLES.BEASTMASTER && roundCount <= 3;
+                                         if ((target.color !== color || myRole === ROLES.TYRANT) && !isImmune) moves.push({ x: tempX, y: tempY }); 
                                          break; 
                                      }
-                                     // --------------------
-                                     const targetRole = target.color === COLORS.RED ? redRole : blackRole;
-                                     const isImmune = (target.type === PIECE.HORSE || target.type === PIECE.ELEPHANT) && targetRole === ROLES.BEASTMASTER && roundCount <= 3;
-                                     if ((target.color !== color || myRole === ROLES.TYRANT) && !isImmune) moves.push({ x: tempX, y: tempY }); 
-                                     break; 
                                  }
                                  tempX += dx; tempY += dy;
                              }
@@ -374,33 +416,39 @@
                     });
                     break;
                 case PIECE.GUARD:
-                case PIECE.SHADOW: // Shared simple movement for derived pieces
                     [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
-                         // GUARD moves diag, SHADOW moves straight
-                         if (type === PIECE.GUARD) {
-                            if (Math.abs(dx) + Math.abs(dy) !== 1) return; // Guard moves diag, wait.
-                            // Logic below is straight. Guard uses specific diag logic.
+                         if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+                    });
+                    [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([dx, dy]) => {
+                        let curX = x + dx; let curY = y + dy;
+                        while (isWithinBoard(curX, curY)) {
+                            const target = getPieceAt(board, curX, curY);
+                            if (!target) { moves.push({ x: curX, y: curY }); } 
+                            else { 
+                                if (isAllyShadow(target, color)) {
+                                    // Guard can pass through ally shadow? Assuming yes for consistency
+                                } else {
+                                    break; 
+                                }
+                            }
+                            curX += dx; curY += dy;
+                        }
+                    });
+                    break;
+                case PIECE.SHADOW: 
+                    // New Shadow Movement: Infinite Range, Penetrate All, Land on Empty
+                    [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dx, dy]) => {
+                         let curX = x + dx; let curY = y + dy;
+                         while (isWithinBoard(curX, curY)) {
+                             const target = getPieceAt(board, curX, curY);
+                             if (!target) {
+                                 moves.push({ x: curX, y: curY }); // Valid move
+                             }
+                             // Whether target exists or not, we CONTINUE (Penetration)
+                             // But we can only land if !target
+                             curX += dx; curY += dy;
                          }
                     });
-
-                    if (type === PIECE.GUARD) {
-                        [[1, 1], [1, -1], [-1, 1], [-1, -1]].forEach(([dx, dy]) => {
-                            let curX = x + dx; let curY = y + dy;
-                            while (isWithinBoard(curX, curY)) {
-                                const target = getPieceAt(board, curX, curY);
-                                if (!target) { moves.push({ x: curX, y: curY }); } else { break; }
-                                curX += dx; curY += dy;
-                            }
-                        });
-                    } else if (type === PIECE.SHADOW) {
-                        [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
-                             const tx = x + dx; const ty = y + dy;
-                             if (isWithinBoard(tx, ty)) {
-                                 const target = getPieceAt(board, tx, ty);
-                                 if (!target) moves.push({ x: tx, y: ty }); // Can only move to empty
-                             }
-                        });
-                    }
                     break;
                 case PIECE.PAWN:
                     const forward = color === COLORS.RED ? -1 : 1;
@@ -509,8 +557,6 @@
             const [isSwapping, setIsSwapping] = useState(false);
             const [swapSource, setSwapSource] = useState(null);
             
-            // Removed Illusionist State
-
             // UI
             const [initialTurn, setInitialTurn] = useState(COLORS.RED);
             const [showSettings, setShowSettings] = useState(false);
@@ -566,13 +612,7 @@
                 const setter = color === COLORS.RED ? setRedRole : setBlackRole;
                 setter(newRole);
                 if (newRole === ROLES.FORTRESS || newRole === ROLES.TRICKSTER) {
-                    // Reset board if role changes because these roles spawn items
-                    // For simplicity, we just remind user or reset board manually
-                    // But here we can trigger a soft reset if game hasn't really started (round 1)
                     if (roundCount === 1) {
-                         const otherRole = color === COLORS.RED ? blackRole : redRole;
-                         // Hacky: we need state of other role. 
-                         // Better: Just set the role. The user can click 'Restart' to apply spawn changes.
                          setMessage("角色变更：请点击【重开】应用新角色的开局棋子");
                     }
                 }
@@ -709,24 +749,19 @@
                 }
 
                 // --- TRICKSTER SHADOW INTERACTION ---
-                // If I have selected a SHADOW, and I click an ENEMY adjacent to it (Front/Left/Right)
+                // If I have selected a SHADOW, and I click an ENEMY adjacent to it (Front/Back/Left/Right)
                 if (selectedPos) {
                     const mover = getPieceAt(board, selectedPos.x, selectedPos.y);
                     const target = getPieceAt(board, x, y);
                     
                     if (mover && mover.type === PIECE.SHADOW && mover.color === turn && target && target.color !== turn) {
-                        // Check adjacency (Forward, Left, Right)
+                        // Check adjacency (Front, Back, Left, Right) - Distance of 1
                         const dx = x - mover.x;
                         const dy = y - mover.y;
-                        const forwardDir = turn === COLORS.RED ? -1 : 1;
-                        
-                        // Conditions:
-                        // 1. Distance is 1
-                        // 2. Not backward (backward dy would be -forwardDir)
                         const isAdjacent = Math.abs(dx) + Math.abs(dy) === 1;
-                        const isBackward = (dx === 0 && dy === -forwardDir);
                         
-                        if (isAdjacent && !isBackward) {
+                        // Condition: Adjacent AND Target is not already flipped
+                        if (isAdjacent && !target.isFlipped) {
                             // Perform FLIP
                             saveHistory();
                             const newBoard = board.map(item => item.id === target.id ? { ...item, isFlipped: true } : item);
@@ -737,6 +772,9 @@
                             setValidMoves([]);
                             nextTurn(); // Consumes turn
                             return;
+                        } else if (isAdjacent && target.isFlipped) {
+                             setMessage("该棋子已翻面，无法再次惊吓");
+                             return;
                         }
                     }
                 }
@@ -885,7 +923,7 @@
                     <div className="w-full bg-stone-800 text-stone-200 p-3 flex justify-between items-center z-20 shadow-md">
                         <div className="font-bold text-lg tracking-wider flex items-center gap-2">
                            <span><span className="text-red-600">超级</span>中国象棋</span>
-                           <span className="text-xs font-normal bg-stone-700 px-2 py-0.5 rounded text-stone-400">v1.3.0</span>
+                           <span className="text-xs font-normal bg-stone-700 px-2 py-0.5 rounded text-stone-400">v1.3.1</span>
                         </div>
                         <div className="flex gap-3">
                              <button onClick={(e) => { e.stopPropagation(); setShowHelp(true); }} className="p-2 bg-stone-700 rounded hover:bg-stone-600"><BookOpen size={18} /></button>
@@ -961,8 +999,8 @@
                                     if (mover && mover.type === PIECE.SHADOW && mover.color === turn && piece && piece.color !== turn) {
                                          const dx = x - mover.x;
                                          const dy = y - mover.y;
-                                         const forwardDir = turn === COLORS.RED ? -1 : 1;
-                                         if ((Math.abs(dx) + Math.abs(dy) === 1) && !(dx === 0 && dy === -forwardDir)) {
+                                         // Front, Back, Left, Right allowed. Distance 1.
+                                         if ((Math.abs(dx) + Math.abs(dy) === 1) && !piece.isFlipped) {
                                              isShadowTarget = true;
                                          }
                                     }
@@ -1127,6 +1165,5 @@
         @keyframes scaleIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     </style>
 </body>
-
 
 </html>
